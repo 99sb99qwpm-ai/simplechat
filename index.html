@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockMind — AI Market Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── Top bar ──────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polyline points="1,12 5,7 8,10 11,5 15,3" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <span class="brand-name">Stock<span>Mind</span></span>
+  </div>
+
+  <div class="topbar-tickers" id="ticker-bar">
+    <div class="ticker-item">
+      <span class="ticker-sym">AAPL</span>
+      <span class="ticker-price">—</span>
+      <span class="ticker-change" id="t-aapl">—</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-sym">TSLA</span>
+      <span class="ticker-price">—</span>
+      <span class="ticker-change" id="t-tsla">—</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-sym">NVDA</span>
+      <span class="ticker-price">—</span>
+      <span class="ticker-change" id="t-nvda">—</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-sym">BTC</span>
+      <span class="ticker-price">—</span>
+      <span class="ticker-change" id="t-btc">—</span>
+    </div>
+  </div>
+
+  <div class="topbar-status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Connecting…</span>
+  </div>
+</header>
+
+<!-- ── Main layout ───────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <button class="new-chat-btn" id="new-chat-btn">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      New conversation
+    </button>
+
+    <div class="sidebar-divider"></div>
+    <p class="sidebar-label">Recent</p>
+    <ul class="session-list" id="session-list">
+      <!-- populated by JS -->
+    </ul>
+  </aside>
+
+  <!-- Chat -->
+  <section class="chat-area">
+
+    <!-- Empty / Welcome state -->
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">
+        <svg viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polyline points="2,20 8,11 13,16 18,8 24,5" stroke="url(#g)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <defs>
+            <linearGradient id="g" x1="2" y1="20" x2="24" y2="5">
+              <stop offset="0%" stop-color="#00d4aa"/>
+              <stop offset="100%" stop-color="#0ea5e9"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <h2>What's moving the market?</h2>
+      <p>Ask about any stock, get AI analysis, earnings breakdowns, sector trends, or just talk through an investment idea.</p>
+      <div class="suggestion-chips">
+        <button class="chip" data-prompt="Analyze NVDA — is the valuation justified?">Analyze NVDA valuation</button>
+        <button class="chip" data-prompt="What are the key risks in the current macro environment?">Macro risks right now</button>
+        <button class="chip" data-prompt="Compare AAPL vs MSFT as long-term holds">AAPL vs MSFT long-term</button>
+        <button class="chip" data-prompt="Explain what an inverted yield curve means for stocks">Inverted yield curve</button>
+        <button class="chip" data-prompt="What sectors tend to outperform in a rate-cut cycle?">Rate-cut sectors</button>
+        <button class="chip" data-prompt="Break down Tesla's latest earnings">Tesla earnings breakdown</button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="messages" id="messages" style="display:none;"></div>
+
+    <!-- Input -->
+    <div class="input-row">
+      <div class="input-wrapper">
+        <textarea
+          id="msg-input"
+          rows="1"
+          placeholder="Ask about a stock, sector, or market event…"
+        ></textarea>
+      </div>
+      <button class="send-btn" id="send-btn" disabled>
+        <svg viewBox="0 0 16 16" fill="none">
+          <path d="M2 8h12M9 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <span class="input-hint">⏎ send</span>
+    </div>
+  </section>
+</div>
+
+<div id="toast"></div>
+
+<!-- ── Scripts ────────────────────────────────────────────────── -->
+<script>
+// ──────────────────────────────────────────────────────────────
+//  CONFIG  — replace with your real values
+// ──────────────────────────────────────────────────────────────
+const BACKEND_URL     = 'https://project-81kh5.vercel.app';           // e.g. https://your-vercel-app.vercel.app
+
+// ──────────────────────────────────────────────────────────────
+//  SUPABASE CLIENT
+// ──────────────────────────────────────────────────────────────
+
+
+
+// ──────────────────────────────────────────────────────────────
+//  STATE
+// ──────────────────────────────────────────────────────────────
+let currentSessionId = null;
+let isLoading = false;
+let chatHistory = [];     // { role, content }[]
+
+// ──────────────────────────────────────────────────────────────
+//  DOM REFS
+// ──────────────────────────────────────────────────────────────
+const msgInput    = document.getElementById('msg-input');
+const sendBtn     = document.getElementById('send-btn');
+const messagesEl  = document.getElementById('messages');
+const emptyState  = document.getElementById('empty-state');
+const sessionList = document.getElementById('session-list');
+const statusDot   = document.getElementById('status-dot');
+const statusText  = document.getElementById('status-text');
+const toast       = document.getElementById('toast');
+const newChatBtn  = document.getElementById('new-chat-btn');
+
+// ──────────────────────────────────────────────────────────────
+//  STATUS INDICATOR
+// ──────────────────────────────────────────────────────────────
+function setStatus(connected, label) {
+  statusDot.className  = 'status-dot' + (connected ? ' connected' : '');
+  statusText.textContent = label;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  TOAST
+// ──────────────────────────────────────────────────────────────
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+// ──────────────────────────────────────────────────────────────
+//  TEXTAREA AUTO-RESIZE
+// ──────────────────────────────────────────────────────────────
+msgInput.addEventListener('input', () => {
+  msgInput.style.height = 'auto';
+  msgInput.style.height = Math.min(msgInput.scrollHeight, 140) + 'px';
+  sendBtn.disabled = msgInput.value.trim() === '' || isLoading;
+});
+
+msgInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (!sendBtn.disabled) handleSend();
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+//  SUGGESTION CHIPS
+// ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const prompt = chip.dataset.prompt;
+    msgInput.value = prompt;
+    msgInput.dispatchEvent(new Event('input'));
+    handleSend();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
+//  SHOW / HIDE EMPTY STATE
+// ──────────────────────────────────────────────────────────────
+function showMessages() {
+  emptyState.style.display  = 'none';
+  messagesEl.style.display  = 'flex';
+}
+
+function showEmpty() {
+  emptyState.style.display  = '';
+  messagesEl.style.display  = 'none';
+}
+
+// ──────────────────────────────────────────────────────────────
+//  RENDER A MESSAGE BUBBLE
+// ──────────────────────────────────────────────────────────────
+function renderMessage(role, content, ts) {
+  showMessages();
+  const now    = ts ? new Date(ts) : new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const msg     = document.createElement('div');
+  msg.className = `msg ${role}`;
+
+  const avatarLetter = role === 'user' ? 'U' : 'AI';
+
+  msg.innerHTML = `
+    <div class="msg-avatar">${avatarLetter}</div>
+    <div>
+      <div class="msg-bubble">${escapeHtml(content)}</div>
+      <div class="msg-meta">${timeStr}</div>
+    </div>
+  `;
+
+  messagesEl.appendChild(msg);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  TYPING INDICATOR
+// ──────────────────────────────────────────────────────────────
+let typingEl = null;
+
+function showTyping() {
+  showMessages();
+  const wrapper = document.createElement('div');
+  wrapper.className = 'msg assistant';
+  wrapper.innerHTML = `
+    <div class="msg-avatar">AI</div>
+    <div class="typing-indicator">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>
+  `;
+  messagesEl.appendChild(wrapper);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  typingEl = wrapper;
+}
+
+function hideTyping() {
+  if (typingEl) { typingEl.remove(); typingEl = null; }
+}
+
+// ──────────────────────────────────────────────────────────────
+//  ESCAPE HTML
+// ──────────────────────────────────────────────────────────────
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, '<br>');
+}
+
+// ──────────────────────────────────────────────────────────────
+//  CALL BACKEND → GEMINI
+// ──────────────────────────────────────────────────────────────
+async function callGemini(userMessage) {
+  const endpoint = BACKEND_URL !== 'YOUR_BACKEND_URL'
+    ? `${BACKEND_URL}/api/chat`
+    : null;
+
+  if (!endpoint) {
+    // Dev fallback — echoes the message for UI testing
+    return `[Backend not configured] You asked: "${userMessage}"\n\nConnect your Vercel backend to get real Gemini responses.`;
+  }
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: userMessage,
+      history: chatHistory.slice(-10)     // send last 10 turns for context
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => res.statusText);
+    throw new Error(`Backend error ${res.status}: ${err}`);
+  }
+
+  const json = await res.json();
+  return json.reply ?? json.text ?? JSON.stringify(json);
+}
+
+// ──────────────────────────────────────────────────────────────
+//  MAIN SEND HANDLER
+// ──────────────────────────────────────────────────────────────
+async function handleSend() {
+  const text = msgInput.value.trim();
+  if (!text || isLoading) return;
+
+  isLoading = true;
+  sendBtn.disabled = true;
+  msgInput.value = '';
+  msgInput.style.height = 'auto';
+
+  // Create session on first message
+  if (!currentSessionId) {
+    currentSessionId = await createSession(text);
+    await loadSessions();
+  }
+
+  // Render user message
+  renderMessage('user', text);
+  chatHistory.push({ role: 'user', content: text });
+  await saveMessage(currentSessionId, 'user', text);
+
+  // Show typing indicator
+  showTyping();
+
+  try {
+    const reply = await callGemini(text);
+
+    hideTyping();
+    renderMessage('assistant', reply);
+    chatHistory.push({ role: 'assistant', content: reply });
+    await saveMessage(currentSessionId, 'assistant', reply);
+
+  } catch (err) {
+    hideTyping();
+    showToast(err.message || 'Something went wrong');
+    console.error(err);
+  }
+
+  isLoading = false;
+  sendBtn.disabled = msgInput.value.trim() === '';
+  msgInput.focus();
+}
+
+// ──────────────────────────────────────────────────────────────
+//  NEW CHAT
+// ──────────────────────────────────────────────────────────────
+newChatBtn.addEventListener('click', () => {
+  currentSessionId = null;
+  chatHistory = [];
+  messagesEl.innerHTML = '';
+  showEmpty();
+  document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+  msgInput.focus();
+});
+
+// ──────────────────────────────────────────────────────────────
+//  SEND BUTTON
+// ──────────────────────────────────────────────────────────────
+sendBtn.addEventListener('click', handleSend);
+
+// ──────────────────────────────────────────────────────────────
+//  TICKER PLACEHOLDERS  (real data will come from your backend)
+// ──────────────────────────────────────────────────────────────
+function renderTicker(id, change) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const up = change >= 0;
+  el.textContent = (up ? '+' : '') + change.toFixed(2) + '%';
+  el.className = 'ticker-change ' + (up ? 'up' : 'down');
+}
+
+// Stub values — replace with real API calls from your backend
+renderTicker('t-aapl',  +1.34);
+renderTicker('t-tsla',  -2.17);
+renderTicker('t-nvda',  +3.58);
+renderTicker('t-btc',   +0.92);
+
+// ──────────────────────────────────────────────────────────────
+//  INIT
+// ──────────────────────────────────────────────────────────────
+(async function init() {
+  initSupabase();
+
+  if (supabase) {
+    setStatus(false, 'Connecting…');
+    try {
+      const { error } = await supabase.from('chat_sessions').select('id').limit(1);
+      if (!error) {
+        setStatus(true, 'Connected');
+        await loadSessions();
+      } else {
+        setStatus(false, 'DB error');
+        console.error(error);
+      }
+    } catch (e) {
+      setStatus(false, 'Offline');
+    }
+  } else {
+    setStatus(false, 'Config needed');
+  }
+
+  msgInput.focus();
+})();
+</script>
+
+</body>
+</html>
