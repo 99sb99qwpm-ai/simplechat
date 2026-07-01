@@ -13,7 +13,7 @@ export const config = {
 };
 
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
 
 // System prompt — shapes how Gemini responds
 const SYSTEM_PROMPT = `You are StockMind, an expert AI assistant specialised in stock market analysis, financial news interpretation, and investment research. Your role is to:
