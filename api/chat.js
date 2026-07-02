@@ -62,7 +62,7 @@ export default async function handler(req) {
     };
 
     // 5. Verbindung zur Gemini API aufbauen (Nutzt Gemini 2.5 Flash Lite)
-    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
+    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
 
     const response = await fetch(geminiEndpoint, {
       method: 'POST',
